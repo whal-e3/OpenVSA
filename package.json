@@ -1,0 +1,40 @@
+{
+  "name": "openvsa",
+  "version": "1.0.0",
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "SunHyuk Hwang",
+  "type": "commonjs",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "node server.js",
+    "electron": "electron ."
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "electron": "^29.0.0",
+    "electron-builder": "^24.13.0"
+  },
+  "build": {
+    "appId": "com.openvsa.app",
+    "productName": "OpenVSA",
+    "files": [
+      "electron/**/*",
+      "src/**/*",
+      "styles.css",
+      "index.html",
+      "server.js"
+    ],
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Utility"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    }
+  }
+}
