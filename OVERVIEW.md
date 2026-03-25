@@ -1,6 +1,6 @@
 # OpenVSA — System Overview
 
-A lightweight virtual antenna simulator with 3D visualization, GPredict integration, and SDR waterfall display. Loads plain IQ files directly — no decryption, no hardcoded satellites.
+A virtual antenna simulator with 3D visualization, GPredict integration, and SDR waterfall display. Loads plain IQ signal files for spectrum analysis and recording.
 
 ## Architecture
 
@@ -72,6 +72,10 @@ openvsa/
 ├── index.html                # Entry HTML (two-panel layout)
 ├── styles.css                # Full UI styling
 ├── server.js                 # TCP/WS bridge (rotctld protocol)
+├── LICENSE                   # Dual license (GPLv3 + commercial)
+├── README.md
+├── logo.png
+├── screenshot.png
 ├── electron/
 │   ├── main.js               # Electron main: file I/O, IPC, QTH reader
 │   └── preload.js            # Context bridge: electronAPI
@@ -89,17 +93,6 @@ openvsa/
         └── simple3d.js       # Software 3D renderer (triangles, projection)
 ```
 
-## Key Differences from Original VSA
-
-| Feature | Original VSA | OpenVSA |
-|---------|-------------|----------|
-| IQ file loading | AES-256-GCM decryption | Plain file load |
-| Satellite list | Hardcoded (DOLPHIN-1, etc.) | None — generic |
-| Satellite tracking | SGP4/TLE via satellite.js | Not included |
-| Signal model | EIRP, FSPL, beam attenuation, Doppler | Direct FFT + gain |
-| Obfuscation | javascript-obfuscator + bytenode | None |
-| Dependencies | ws, satellite.js | ws only |
-
 ## Antenna Types
 
 | Type | Beamwidth | Gain (relative) | Status |
@@ -114,4 +107,4 @@ openvsa/
 | Port | Protocol | Purpose |
 |------|----------|---------|
 | 4533 | TCP | Hamlib rotctld (GPredict connects here) |
-| 4534 | WebSocket | Browser bridge (renderer connects here) |
+| 4534 | WebSocket | Internal bridge (renderer connects here) |
