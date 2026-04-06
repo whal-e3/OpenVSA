@@ -1,0 +1,23 @@
+{
+  "name": "DEMOSAT",
+  "modulation": "OOK",
+  "baudRate": 100,
+  "sampleRate": 24000,
+  "preamble": "AAAA",
+  "packetFormat": "[preamble 2B] [length 1B] [opcode 1B] [payload 0-NB] [CRC-8 1B]",
+  "crc": {
+    "type": "CRC-8",
+    "polynomial": "0x07",
+    "init": "0x00"
+  },
+  "opcodes": {
+    "0x01": { "name": "ping",             "payloadSize": 0,   "description": "Link verification (diagnostic)" },
+    "0x10": { "name": "solar_panel",      "payloadSize": 1,   "description": "Set solar panel angle (0-255)" },
+    "0x20": { "name": "antenna_gimbal",   "payloadSize": 2,   "description": "Set antenna pointing (az, el)" },
+    "0x30": { "name": "subsystem_ctrl",   "payloadSize": 1,   "description": "Bitmask: bit0=stabilization, bit1=transponder" },
+    "0x40": { "name": "transponder_ctrl", "payloadSize": 1,   "description": "0=off, 1=on" },
+    "0xE0": { "name": "auth_change",      "payloadSize": 32,  "description": "Overwrite HMAC-SHA256 key" },
+    "0xF0": { "name": "firmware_upload",  "payloadSize": -1,  "description": "Write to flash (offset 2B + data)" },
+    "0xFF": { "name": "obc_reboot",       "payloadSize": 0,   "description": "Hard reboot OBC" }
+  }
+}

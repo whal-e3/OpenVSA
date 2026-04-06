@@ -14,7 +14,7 @@ export function createStore(initialState) {
 
     subscribe(fn) {
       listeners.add(fn);
-      fn(state);
+      fn(state); // call immediately with current state
       return () => listeners.delete(fn);
     },
   };

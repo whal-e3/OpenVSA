@@ -1,7 +1,6 @@
 // Copyright (c) 2026 SunHyuk Hwang. All Rights Reserved.
 
 const WS_URL = "ws://localhost:4534";
-const RECONNECT_DELAY_MS = 3000;
 
 /**
  * Opens a WebSocket connection to the rotctld bridge server and keeps it alive.
@@ -33,13 +32,25 @@ export function connectRotctld(store) {
           gpredictTime: msg.time ?? null,
         }));
       } else if (msg.type === "target") {
-        store.setState((s) => ({ ...s, targetName: msg.name }));
+        store.setState((s) => ({ ...s, targetSat: msg.name }));
       } else if (msg.type === "location") {
         store.setState((s) => ({ ...s, lat: msg.lat, lon: msg.lon }));
       } else if (msg.type === "status") {
         store.setState((s) => ({
           ...s,
           gpredictConnected: msg.gpredictConnected,
+        }));
+      } else if (msg.type === "frequency") {
+        store.setState((s) => ({
+          ...s,
+          frequency: msg.freqHz / 1e6,
+          radioControlled: true,
+        }));
+      } else if (msg.type === "radioStatus") {
+        store.setState((s) => ({
+          ...s,
+          radioConnected: msg.radioConnected,
+          radioControlled: msg.radioConnected,
         }));
       }
     });
@@ -50,11 +61,21 @@ export function connectRotctld(store) {
         bridgeConnected: false,
         gpredictConnected: false,
       }));
+      // Auto-reconnect
       setTimeout(connect, RECONNECT_DELAY_MS);
     });
 
-    ws.addEventListener("error", () => {});
+    ws.addEventListener("error", () => {
+      // handled by the 'close' event that follows
+    });
   }
+
+  // Forward uplink commands from the renderer to the bridge server
+  window.addEventListener("uplink-transmit", ({ detail }) => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "uplink-transmit", ...detail }));
+    }
+  });
 
   connect();
 }

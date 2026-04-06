@@ -15,12 +15,14 @@ const store = createStore({
   bridgeConnected:   false,
   gpredictConnected: false,
   gpredictTime:      null,
+  radioConnected:    false,
+  radioControlled:   false,
   lat:               37.241917,
   lon:               127.081127,
-  targetName:        "",
-  frequency:         0,
-  sampleRate:        0,
-  bandwidth:         0,
+  targetSat:         "",
+  frequency:         123.4,
+  sampleRate:        1,
+  bandwidth:         1,
   gain:              0,
   downconvEnabled:   false,
   downconvLO:        9750,
@@ -38,4 +40,26 @@ createRotatorScene({
   antennaTypes: ANTENNA_TYPES,
 });
 
+// Connect to the rotctld bridge server (falls back gracefully if not running)
 connectRotctld(store);
+
+// Load ground station location from GPredict's .qth files on startup
+if (window.electronAPI) {
+  window.electronAPI.getQTH().then(stations => {
+    console.log("[qth] received:", stations);
+    if (stations && stations.length > 0) {
+      const { lat, lon } = stations[0];
+      store.setState(s => ({ ...s, lat, lon }));
+    }
+  }).catch(err => console.error("[qth] error:", err));
+
+  window.electronAPI.onQTHUpdated(stations => {
+    console.log("[qth] auto-updated:", stations);
+    if (stations && stations.length > 0) {
+      const { lat, lon } = stations[0];
+      store.setState(s => ({ ...s, lat, lon }));
+    }
+  });
+} else {
+  console.warn("[qth] window.electronAPI not available");
+}

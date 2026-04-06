@@ -140,11 +140,15 @@ function createAzimuthHeadTriangles() {
 }
 
 const STARS = (() => {
+  // Fixed seed so stars don't flicker on every render call
   const s = [];
   let seed = 42;
   const rand = () => { seed = (seed * 1664525 + 1013904223) & 0xffffffff; return (seed >>> 0) / 0xffffffff; };
   for (let i = 0; i < 80; i++) {
-    s.push({ x: rand(), y: rand() * 0.64, r: rand() * 1.2 + 0.3, a: rand() * 0.5 + 0.5 });
+    const r = rand() * 1.2 + 0.3;
+    const a = rand() * 0.5 + 0.5;
+    // Mark the brightest stars as twinklers
+    s.push({ x: rand(), y: rand() * 0.64, r, a, twinkle: (r > 1.0 && a > 0.7) });
   }
   return s;
 })();
@@ -156,21 +160,32 @@ function drawSky(ctx, width, height) {
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, width, height);
 
+  // Stars
+  const now = Date.now() / 1000;
   for (const star of STARS) {
+    let alpha = star.a;
+    let radius = star.r;
+    if (star.twinkle) {
+      // Slow sinusoidal twinkle with unique phase per star
+      const phase = star.x * 17 + star.y * 31;
+      alpha = star.a * (0.4 + 0.6 * Math.abs(Math.sin(now * 0.8 + phase)));
+      radius = star.r * (0.8 + 0.2 * Math.abs(Math.sin(now * 1.2 + phase)));
+    }
     ctx.beginPath();
-    ctx.arc(star.x * width, star.y * height, star.r, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(255, 255, 255, ${star.a})`;
+    ctx.arc(star.x * width, star.y * height, radius, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255, 255, 255, ${alpha.toFixed(2)})`;
     ctx.fill();
   }
 
   const groundTop = height * 0.68;
-  const dip       = height * 0.05;
+  const dip       = height * 0.05;  // how much the sides dip below the center peak
 
   const ground = ctx.createLinearGradient(0, groundTop, 0, height);
   ground.addColorStop(0, "#2a4228");
   ground.addColorStop(1, "#1a2a18");
   ctx.fillStyle = ground;
   ctx.beginPath();
+  // top edge: arc highest at center, sides dip down
   ctx.moveTo(0, groundTop + dip);
   ctx.quadraticCurveTo(width / 2, groundTop, width, groundTop + dip);
   ctx.lineTo(width, height);
@@ -192,14 +207,15 @@ export function createSceneRenderer({ canvas }) {
   const lightDir = normalize({ x: 0.45, y: 0.9, z: 0.3 });
   const toCamera = (v) => rotateX(rotateY(v, cameraTilt.y), cameraTilt.x);
 
+  // ── Starlink-style satellite train ────────────────────────────────────────
   const TRAIN_COUNT   = 10;
-  const TRAIN_SPACING = 24;
+  const TRAIN_SPACING = 24; // px between consecutive satellites
 
   const trainState = {
     active: false,
-    x: 0, y: 0,
+    x: 0, y: 0,   // lead satellite (index 0)
     vx: 0, vy: 0,
-    nx: 0, ny: 0,
+    nx: 0, ny: 0, // unit direction vector
     lastMs: 0,
     nextMs: Date.now() + 8000,
   };
@@ -217,6 +233,7 @@ export function createSceneRenderer({ canvas }) {
         trainState.ny = dy / dist;
         trainState.vx = trainState.nx * spd;
         trainState.vy = trainState.ny * spd;
+        // lead starts at bottom-left entry point
         trainState.x = -6;
         trainState.y = height * 0.62;
         trainState.lastMs = now;
@@ -226,6 +243,7 @@ export function createSceneRenderer({ canvas }) {
       trainState.x += trainState.vx * dt;
       trainState.y += trainState.vy * dt;
       trainState.lastMs = now;
+      // done when the tail (last satellite) exits the sky
       const tailX = trainState.x - trainState.nx * (TRAIN_COUNT - 1) * TRAIN_SPACING;
       const tailY = trainState.y - trainState.ny * (TRAIN_COUNT - 1) * TRAIN_SPACING;
       if (tailX > width + 6 || tailY < -6) {
@@ -240,6 +258,7 @@ export function createSceneRenderer({ canvas }) {
     for (let i = 0; i < TRAIN_COUNT; i++) {
       const x = trainState.x - trainState.nx * i * TRAIN_SPACING;
       const y = trainState.y - trainState.ny * i * TRAIN_SPACING;
+      // clip to sky area (above the curved ground)
       if (x < -8 || x > canvas.width + 8 || y < -8 || y > canvas.height + 8) continue;
       const groundY = canvas.height * 0.68 + canvas.height * 0.05 * ((2 * x / canvas.width - 1) ** 2);
       if (y > groundY) continue;
@@ -250,7 +269,7 @@ export function createSceneRenderer({ canvas }) {
     }
   }
 
-  function render({ azimuth, elevation, antennaParts }) {
+  function render({ azimuth, elevation, antennaParts, extraParts, overlayLabels }) {
     const width  = Math.max(1, canvas.width);
     const height = Math.max(1, canvas.height);
     ctx.clearRect(0, 0, width, height);
@@ -267,16 +286,19 @@ export function createSceneRenderer({ canvas }) {
 
     const groundAnchor = project(toCamera({ x: 0, y: 0, z: 0 }), width, height);
 
+    // Scale the model 1.4× around the ground anchor
     ctx.save();
     ctx.translate(groundAnchor.x, groundAnchor.y);
     ctx.scale(1.08, 1.08);
     ctx.translate(-groundAnchor.x, -groundAnchor.y);
 
+    // shadow under mast
     ctx.fillStyle = "rgba(19, 33, 47, 0.16)";
     ctx.beginPath();
     ctx.ellipse(groundAnchor.x, groundAnchor.y + 10, 78, 18, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    // compass ring
     const compassR = 74;
     ctx.strokeStyle = "rgba(255, 255, 255, 0.32)";
     ctx.lineWidth = 2;
@@ -284,18 +306,16 @@ export function createSceneRenderer({ canvas }) {
     ctx.ellipse(groundAnchor.x, groundAnchor.y + 2, compassR + 24, 22, 0, 0, Math.PI * 2);
     ctx.stroke();
 
-    ctx.beginPath();
-    ctx.moveTo(groundAnchor.x, groundAnchor.y - 18);
-    ctx.lineTo(groundAnchor.x, groundAnchor.y + 26);
-    ctx.moveTo(groundAnchor.x - compassR, groundAnchor.y + 2);
-    ctx.lineTo(groundAnchor.x + compassR, groundAnchor.y + 2);
-    ctx.stroke();
 
+    // ── 3D geometry ───────────────────────────────────────────────────────────
     const groups = [
       { triangles: createStaticTriangles(),       transform: staticT  },
       { triangles: createAzimuthHeadTriangles(),   transform: headT    },
       { triangles: antennaParts,                   transform: mountedT },
     ];
+    if (extraParts && extraParts.length > 0) {
+      groups.push({ triangles: extraParts, transform: staticT });
+    }
 
     const rendered = groups
       .flatMap(({ triangles: gTris, transform }) =>
@@ -305,6 +325,8 @@ export function createSceneRenderer({ canvas }) {
           const eA     = subtract(cam[1], cam[0]);
           const eB     = subtract(cam[2], cam[0]);
           const normal = normalize(cross(eA, eB));
+
+          // if (normal.z >= 0.22) return null;
 
           const light = Math.max(0, -(
             normal.x * lightDir.x + normal.y * lightDir.y + normal.z * lightDir.z
@@ -330,6 +352,7 @@ export function createSceneRenderer({ canvas }) {
 
     ctx.restore();
 
+    // ── Cardinal labels (unscaled, drawn last so they're always on top) ────────
     const cardinalLabels = [
       ["N", groundAnchor.x+50,  groundAnchor.y - 58],
       ["S", (width / 2) - 50,   height - 30],
@@ -346,6 +369,22 @@ export function createSceneRenderer({ canvas }) {
     for (const [lbl, x, y] of cardinalLabels) ctx.strokeText(lbl, x, y);
     ctx.fillStyle = compassInk;
     for (const [lbl, x, y] of cardinalLabels) ctx.fillText(lbl, x, y);
+
+    // ── Overlay labels (e.g., "AMP" on amplifier) ─────────────────────────────
+    if (overlayLabels) {
+      ctx.font = 'bold 11px "Segoe UI", Tahoma, sans-serif';
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      for (const { text, x, y, color } of overlayLabels) {
+        ctx.strokeStyle = "rgba(0, 0, 0, 0.7)";
+        ctx.lineWidth = 3;
+        ctx.lineJoin = "round";
+        ctx.strokeText(text, x, y);
+        ctx.fillStyle = color || "#fff";
+        ctx.fillText(text, x, y);
+      }
+    }
+
     ctx.textBaseline = "alphabetic";
   }
 
