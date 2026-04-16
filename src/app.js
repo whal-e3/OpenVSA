@@ -24,6 +24,7 @@ const store = createStore({
   sampleRate:        1,
   bandwidth:         1,
   gain:              0,
+  dishFeed:          "ku",
   downconvEnabled:   false,
   downconvLO:        9750,
 });

@@ -136,8 +136,8 @@ tcpServer.listen(4533, "0.0.0.0", () => {
 });
 
 // ── HTTP server — TLE feed for GPredict (my_link) ─────────────────────────────
-// DISABLED: TLE is now served by mrradio.kr/tle.txt
-// GPredict should use mrradio.kr/tle.txt as the TLE source instead.
+// DISABLED: TLE is served externally.
+// Configure GPredict to use your own TLE source.
 // const httpServer = http.createServer((req, res) => {
 //   if (req.url === "/tle.txt") {
 //     try {

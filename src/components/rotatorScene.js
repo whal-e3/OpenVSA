@@ -60,13 +60,12 @@ export function createRotatorScene({ container, store, antennaTypes }) {
           <span id="scene-lbl-time">--:--:-- UTC</span>
         </div>
         <div class="scene-loc-row">
-          <input type="number" id="scene-ctrl-lat" class="scene-loc-input" step="0.0001" min="-90"  max="90"  readonly />
-          <span class="scene-loc-sep" id="scene-lbl-lat-dir">N</span>
-          <input type="number" id="scene-ctrl-lon" class="scene-loc-input" step="0.0001" min="-180" max="180" readonly />
-          <span class="scene-loc-sep" id="scene-lbl-lon-dir">E</span>
+          <input type="number" id="scene-ctrl-lat" class="scene-loc-input" step="0.0001" min="-90"  max="90"  readonly /><span class="scene-loc-sep" id="scene-lbl-lat-dir">N</span>
+          <span class="scene-loc-divider">/</span>
+          <input type="number" id="scene-ctrl-lon" class="scene-loc-input" step="0.0001" min="-180" max="180" readonly /><span class="scene-loc-sep" id="scene-lbl-lon-dir">E</span>
         </div>
         <div class="scene-loc-refresh-row">
-          <button id="btn-refresh-loc" class="btn-refresh-loc" title="Reload location from GPredict .qth">↺ Refresh location</button>
+
         </div>
         <div class="antenna-spec-overlay">
           <p class="antenna-spec-name" id="spec-name"></p>
@@ -74,6 +73,7 @@ export function createRotatorScene({ container, store, antennaTypes }) {
           <table class="antenna-spec-table">
             <tr><td>Beamwidth</td><td id="spec-beamwidth"></td></tr>
             <tr><td>Peak Gain</td><td id="spec-gain"></td></tr>
+            <tr><td>Polarization</td><td id="spec-polarization"></td></tr>
           </table>
         </div>
         <div class="sdr-spec-box">
@@ -124,32 +124,17 @@ export function createRotatorScene({ container, store, antennaTypes }) {
   const sceneLonEl    = container.querySelector("#scene-ctrl-lon");
   const lblLatDir     = container.querySelector("#scene-lbl-lat-dir");
   const lblLonDir     = container.querySelector("#scene-lbl-lon-dir");
-  const btnRefreshLoc = container.querySelector("#btn-refresh-loc");
   const specName      = container.querySelector("#spec-name");
   const specDesc      = container.querySelector("#spec-desc");
   const specBeamwidth = container.querySelector("#spec-beamwidth");
   const specGain      = container.querySelector("#spec-gain");
+  const specPol       = container.querySelector("#spec-polarization");
   const dotBridge     = container.querySelector("#dot-bridge");
   const dotGpredict   = container.querySelector("#dot-gpredict");
   const dotRadio      = container.querySelector("#dot-radio");
   const lblBridge     = container.querySelector("#lbl-bridge");
   const lblGpredict   = container.querySelector("#lbl-gpredict");
   const lblRadio      = container.querySelector("#lbl-radio");
-
-  // ── location refresh ──────────────────────────────────────────────────────
-  if (btnRefreshLoc && window.electronAPI) {
-    btnRefreshLoc.addEventListener("click", async () => {
-      btnRefreshLoc.disabled = true;
-      try {
-        const stations = await window.electronAPI.getQTH();
-        if (stations && stations.length > 0) {
-          store.setState(s => ({ ...s, lat: stations[0].lat, lon: stations[0].lon }));
-        }
-      } finally {
-        btnRefreshLoc.disabled = false;
-      }
-    });
-  }
 
   // ── spectrum (FFT power plot) ──────────────────────────────────────────────
   const spCanvas = container.querySelector("#spectrum-canvas");
@@ -231,6 +216,9 @@ export function createRotatorScene({ container, store, antennaTypes }) {
   );
   const SAT_iqSampleRate = Object.fromEntries(
     Object.entries(SATELLITES).map(([k, v]) => [k, v.iqSampleRate])
+  );
+  const SAT_POLARIZATION = Object.fromEntries(
+    Object.entries(SATELLITES).map(([k, v]) => [k, v.polarization ?? "linear"])
   );
 
   const GAIN_MIN_DB        = 0;
@@ -407,13 +395,23 @@ export function createRotatorScene({ container, store, antennaTypes }) {
     const atmLoss = -A_ZEN / Math.sin(elEff * Math.PI / 180);
 
     // Frequency-dependent gain for dish antenna: G = η(πD/λ)²
-    // Below 1 GHz the dish is electrically too small — no signal at all.
+    // The dish feed determines the usable frequency range.
     // Other antennas use fixed peakGainDb from their config.
     let peakGain = ant.peakGainDb ?? 0;
     const satFreqMHz = getIQCenterMHz();
 
     if (state.antennaType === "dish") {
+      // Below 1 GHz the dish is electrically too small — no signal at all.
       if (satFreqMHz > 0 && satFreqMHz < 1000) return -60;
+      // Feed type determines the usable frequency range
+      const feedRanges = {
+        lband: [1500, 1800],   // L-band feed: 1.5–1.8 GHz
+        sband: [2000, 2500],   // S-band feed: 2.0–2.5 GHz
+        ku:    [10700, 12700], // Ku-band feed + LNB: 10.7–12.7 GHz
+      };
+      const feed = state.dishFeed || "ku";
+      const range = feedRanges[feed];
+      if (range && satFreqMHz > 0 && (satFreqMHz < range[0] || satFreqMHz > range[1])) return -60;
       if (satFreqMHz > 0) {
         const lambda = 299.792458 / satFreqMHz;  // wavelength in metres
         const dishGainDbi = 10 * Math.log10(0.55 * (Math.PI * 0.75 / lambda) ** 2);
@@ -427,7 +425,17 @@ export function createRotatorScene({ container, store, antennaTypes }) {
       if (satFreqMHz > 3000) return -60;
     }
 
-    return Math.max(-60, peakGain + beamLoss + atmLoss);
+    // Polarization mismatch loss
+    const satPol = SAT_POLARIZATION[state.targetSat] ?? "linear";
+    const antPol = ant.polarization ?? "linear";
+    let polLoss = 0;
+    if ((satPol === "RHCP" && antPol === "LHCP") || (satPol === "LHCP" && antPol === "RHCP")) {
+      polLoss = -60; // cross-polarized — signal blocked
+    } else if (satPol !== antPol) {
+      polLoss = -3;  // circular-linear mismatch
+    }
+
+    return Math.max(-60, peakGain + beamLoss + atmLoss + polLoss);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -499,8 +507,9 @@ export function createRotatorScene({ container, store, antennaTypes }) {
         const freqOffsetHz = (toRFMHz(displayFreqMHz) - getIQCenterMHz()) * 1e6 - satDopplerHz;
         const bin = Math.round(FFT_SIZE / 2 + freqOffsetHz / binHz);
         const taper = bandEdgeTaper(freqOffsetHz);
-        db = (bin >= 0 && bin < FFT_SIZE && taper > 0) ? fftMag[bin] + signalPowerDb + gainDb + beamAtten + 20 * Math.log10(taper) : MIN_DB;
-        if (db <= MIN_DB) db = MIN_DB + gainDb + Math.random() * noiseJitter;
+        const sigDb = (bin >= 0 && bin < FFT_SIZE && taper > 0) ? fftMag[bin] + signalPowerDb + gainDb + beamAtten + 20 * Math.log10(taper) : MIN_DB;
+        const noiseDb = MIN_DB + gainDb + Math.random() * noiseJitter;
+        db = Math.max(sigDb, noiseDb);
       } else {
         db = MIN_DB + gainDb + Math.random() * noiseJitter;
       }
@@ -531,8 +540,9 @@ export function createRotatorScene({ container, store, antennaTypes }) {
         const freqOffsetHz = (toRFMHz(displayFreqMHz) - getIQCenterMHz()) * 1e6 - satDopplerHz;
         const bin = Math.round(FFT_SIZE / 2 + freqOffsetHz / binHz);
         const taper = bandEdgeTaper(freqOffsetHz);
-        db = (bin >= 0 && bin < FFT_SIZE && taper > 0) ? fftMag[bin] + signalPowerDb + gainDb + beamAtten + 20 * Math.log10(taper) : MIN_DB;
-        if (db <= MIN_DB) db = MIN_DB + gainDb + Math.random() * noiseJitter;
+        const sigDb = (bin >= 0 && bin < FFT_SIZE && taper > 0) ? fftMag[bin] + signalPowerDb + gainDb + beamAtten + 20 * Math.log10(taper) : MIN_DB;
+        const noiseDb = MIN_DB + gainDb + Math.random() * noiseJitter;
+        db = Math.max(sigDb, noiseDb);
       } else {
         db = MIN_DB + gainDb + Math.random() * noiseJitter;
       }
@@ -599,7 +609,10 @@ export function createRotatorScene({ container, store, antennaTypes }) {
         const bin = Math.round(FFT_SIZE / 2 + freqOffsetHz / binHz);
         const taper = bandEdgeTaper(freqOffsetHz);
         const i = x * 4;
-        const db = (bin >= 0 && bin < FFT_SIZE && taper > 0) ? fftMag[bin] + signalPowerDb + gainDb + beamAtten + 20 * Math.log10(taper) : MIN_DB - 1;
+        let db = (bin >= 0 && bin < FFT_SIZE && taper > 0) ? fftMag[bin] + signalPowerDb + gainDb + beamAtten + 20 * Math.log10(taper) : MIN_DB - 1;
+        // Ensure signal pixels never appear darker than the noise floor
+        const noiseDb = MIN_DB + gainDb + Math.random() * noiseVisual * 0.3;
+        if (db < noiseDb) db = noiseDb;
         if (db <= MIN_DB) {
           const v = Math.random() * noiseVisual;
           row.data[i] = 0; row.data[i+1] = 0; row.data[i+2] = Math.round(v * 3); row.data[i+3] = 255;
@@ -609,11 +622,19 @@ export function createRotatorScene({ container, store, antennaTypes }) {
         }
       }
     } else {
-      // idle — faint noise floor, no signal
+      // idle — faint noise floor, no signal (gain still affects noise)
+      const { gain } = store.getState();
+      const idleGainDb = Math.max(GAIN_MIN_DB, Math.min(GAIN_MAX_DB, gain || 0));
       for (let x = 0; x < WF_W; x++) {
-        const val = Math.random() * noiseVisual;
+        const db = MIN_DB + idleGainDb + Math.random() * noiseVisual * 0.3;
         const i = x * 4;
-        row.data[i] = 0; row.data[i+1] = 0; row.data[i+2] = Math.round(val * 3); row.data[i+3] = 255;
+        if (db <= MIN_DB) {
+          const v = Math.random() * noiseVisual;
+          row.data[i] = 0; row.data[i+1] = 0; row.data[i+2] = Math.round(v * 3); row.data[i+3] = 255;
+        } else {
+          const [r, g, b] = dbToColor(Math.min(MAX_DB, db));
+          row.data[i] = r; row.data[i+1] = g; row.data[i+2] = b; row.data[i+3] = 255;
+        }
       }
     }
 
@@ -623,7 +644,7 @@ export function createRotatorScene({ container, store, antennaTypes }) {
     drawSpectrum(hasSig, beamAtten, signalPowerDb, noiseJitter, wfGainDb);
 
     // ── Real-time recording chunk (80 ms) ─────────────────────────────────
-    if (recBuffer !== null) {
+    if (recActive) {
       const NOISE_SIGMA   = computeNoiseSigma();
       const state         = store.getState();
       const clampedGain   = Math.max(GAIN_MIN_DB, Math.min(GAIN_MAX_DB, state.gain || 0));
@@ -672,7 +693,10 @@ export function createRotatorScene({ container, store, antennaTypes }) {
         if (recPhase < -Math.PI) recPhase += 2 * Math.PI;
       }
 
-      recBuffer.push(chunk);
+      // Stream chunk to disk immediately (no memory accumulation)
+      if (window.electronAPI?.recChunk) {
+        window.electronAPI.recChunk(new Uint8Array(chunk.buffer));
+      }
     }
   }
   const wfInterval = 30;
@@ -681,20 +705,21 @@ export function createRotatorScene({ container, store, antennaTypes }) {
   // ═══════════════════════════════════════════════════════════════════════════
   // RECORDING — IQ capture, Doppler rotation, noise injection, ADC clipping
   // ═══════════════════════════════════════════════════════════════════════════
-  let recBuffer      = null;  // null = idle; Array of Float32Array chunks when active
+  let recActive      = false; // true when streaming to disk
   let recTargetRate  = 0;     // sample rate (Hz) snapshotted at REC start
   let recFreqOffsetHz = 0;    // signal frequency offset within captured band (Hz)
   let recSrcOffset   = 0;     // fractional position in source IQ (complex samples)
   let recPhase       = 0;     // accumulated rotation phase for continuity across chunks
   let recMeta        = null;  // SigMF metadata snapshotted at REC start
+  let recDir         = null;  // recording output directory
 
-  window.addEventListener("recording-start", ({ detail: { satName: _satName } }) => {
+  window.addEventListener("recording-start", async ({ detail: { satName: _satName } }) => {
     const state      = store.getState();
     recTargetRate    = Math.round((state.sampleRate || 0.048) * 1e6);
     recFreqOffsetHz  = 0;  // computed live each chunk
     recSrcOffset     = iqPos;
     recPhase         = 0;
-    recBuffer        = [];
+    recDir           = state.recDir || null;
     recMeta          = {
       satellite:    state.targetSat,
       centerFreqHz: toRFMHz(state.frequency || getIQCenterMHz()) * 1e6,
@@ -711,34 +736,23 @@ export function createRotatorScene({ container, store, antennaTypes }) {
       beamAttenDb:  computeBeamAttenuationDb(),
       datetime:     new Date().toISOString(),
     };
+    // Start streaming to disk
+    if (window.electronAPI?.recStart) {
+      await window.electronAPI.recStart(recDir);
+    }
+    recActive = true;
   });
 
-  window.addEventListener("recording-save", async ({ detail: { satName, recDir } }) => {
+  window.addEventListener("recording-save", async ({ detail: { satName, recDir: saveDir } }) => {
     if (!window.electronAPI) return;
-
-    const chunks  = recBuffer;
-    recBuffer     = null;   // stop accumulation immediately
-
-    if (!chunks || chunks.length === 0) {
-      window.dispatchEvent(new CustomEvent("recording-saved", { detail: { error: "No data recorded" } }));
-      return;
-    }
-
-    // Concatenate all accumulated chunks into a single Float32Array
-    const totalComplex = chunks.reduce((sum, c) => sum + (c.length >> 1), 0);
-    const out = new Float32Array(totalComplex * 2);
-    let offset = 0;
-    for (const chunk of chunks) {
-      out.set(chunk, offset);
-      offset += chunk.length;
-    }
+    recActive = false;
 
     const timestamp  = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     const freqMHz    = ((recMeta?.centerFreqHz ?? 0) / 1e6).toFixed(3).replace(".", "_");
     const safeSat    = satName.replace(/\s+/g, "_").toUpperCase();
     const filename   = `${safeSat}_${freqMHz}MHz_${timestamp}.cf32`;
     try {
-      const savedPath = await window.electronAPI.saveRecording(new Uint8Array(out.buffer), filename, recMeta, recDir);
+      const savedPath = await window.electronAPI.recStop(filename, recMeta, saveDir || recDir);
       window.dispatchEvent(new CustomEvent("recording-saved", { detail: { path: savedPath } }));
     } catch (e) {
       window.dispatchEvent(new CustomEvent("recording-saved", { detail: { error: e.message } }));
@@ -1119,6 +1133,7 @@ export function createRotatorScene({ container, store, antennaTypes }) {
     specDesc.textContent       = antenna.description;
     specBeamwidth.textContent  = `${antenna.beamwidthDeg}°`;
     specGain.textContent       = antenna.peakGainDb > 0 ? `+${antenna.peakGainDb} dB` : `${antenna.peakGainDb} dB`;
+    specPol.textContent        = antenna.polarization ?? "linear";
 
     if (document.activeElement !== sceneLatEl) sceneLatEl.value = state.lat.toFixed(4);
     if (document.activeElement !== sceneLonEl) sceneLonEl.value = state.lon.toFixed(4);

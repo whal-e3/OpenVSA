@@ -5,7 +5,7 @@ import { AMPLIFIERS } from "../data/amplifiers.js";
 import { validateUplink } from "../lib/uplink.js";
 
 export function createControls({ container, store, antennaTypes }) {
-  const disabledAntennas = new Set(["helix"]);
+  const disabledAntennas = new Set([]);
   const typeOptions = Object.entries(antennaTypes)
     .map(([k, v]) => {
       const disabled = disabledAntennas.has(k);
@@ -119,6 +119,15 @@ export function createControls({ container, store, antennaTypes }) {
       <div class="control-row">
         <label>Antenna type</label>
         <select id="ctrl-type">${typeOptions}</select>
+      </div>
+
+      <div class="control-row control-row--inline" id="feed-section">
+        <label for="ctrl-dish-feed">Dish Feed</label>
+        <select id="ctrl-dish-feed">
+          <option value="lband">L-band (1.5–1.8 GHz)</option>
+          <option value="sband">S-band (2.0–2.5 GHz)</option>
+          <option value="ku" selected>Ku-band (10.7–12.7 GHz)</option>
+        </select>
       </div>
 
       <div class="control-row">
@@ -449,6 +458,8 @@ export function createControls({ container, store, antennaTypes }) {
   const gainEl        = container.querySelector("#ctrl-gain");
   const btnGainUp     = container.querySelector("#btn-gain-up");
   const btnGainDown   = container.querySelector("#btn-gain-down");
+  const dishFeedEl    = container.querySelector("#ctrl-dish-feed");
+  const feedSection   = container.querySelector("#feed-section");
   const downconvEl    = container.querySelector("#ctrl-downconv");
   const downconvLOEl  = container.querySelector("#ctrl-downconv-lo");
   const lnbSection    = container.querySelector("#lnb-section");
@@ -515,6 +526,9 @@ export function createControls({ container, store, antennaTypes }) {
 
   btnGainDown.addEventListener("click", () =>
     store.setState((s) => ({ ...s, gain: Math.max(0, s.gain - 1) })));
+
+  dishFeedEl.addEventListener("change", () =>
+    store.setState((s) => ({ ...s, dishFeed: dishFeedEl.value })));
 
   downconvEl.addEventListener("change", () =>
     store.setState((s) => ({ ...s, downconvEnabled: downconvEl.checked })));
@@ -603,8 +617,11 @@ export function createControls({ container, store, antennaTypes }) {
     if (document.activeElement !== bandwidthEl)  bandwidthEl.value  = state.bandwidth;
     if (document.activeElement !== gainEl)       gainEl.value       = state.gain;
     const isDish = state.antennaType === "dish";
-    lnbSection.style.display = isDish ? "" : "none";
-    lnbDivider.style.display = isDish ? "" : "none";
+    const isKuFeed = state.dishFeed === "ku";
+    feedSection.style.display = isDish ? "" : "none";
+    lnbSection.style.display = isDish && isKuFeed ? "" : "none";
+    lnbDivider.style.display = isDish && isKuFeed ? "" : "none";
+    if (document.activeElement !== dishFeedEl) dishFeedEl.value = state.dishFeed;
     downconvEl.checked = state.downconvEnabled;
     if (document.activeElement !== downconvLOEl) downconvLOEl.value = state.downconvLO;
 

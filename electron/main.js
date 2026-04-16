@@ -11,6 +11,7 @@
  */
 const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const path      = require("path");
+const crypto    = require("crypto");
 const fs        = require("fs");
 const os        = require("os");
 const satellite = require("satellite.js");
@@ -18,7 +19,7 @@ const satellite = require("satellite.js");
 const TLE_FILE = path.join(__dirname, "..", "tle.txt");
 const { SATELLITES, ANT_INFO, UPLINK_FLAGS } = require("./config.js");
 
-// ── Plain IQ file loader ─────────────────────────────────────────────────
+// ── Plain IQ file loader with SHA-256 validation ─────────────────────────
 ipcMain.handle("load-iq", async (_event, satName) => {
   const { canceled, filePaths } = await dialog.showOpenDialog({
     title:      `Load IQ file for ${satName}`,
@@ -28,6 +29,16 @@ ipcMain.handle("load-iq", async (_event, satName) => {
   if (canceled || !filePaths.length) throw new Error(`No IQ file selected`);
   const filePath = filePaths[0];
   const bytes = fs.readFileSync(filePath);
+
+  // Verify file integrity against the known hash
+  const expectedHash = SATELLITES[satName]?.iqFileHash;
+  if (expectedHash) {
+    const actualHash = crypto.createHash("sha256").update(bytes).digest("hex");
+    if (actualHash !== expectedHash) {
+      throw new Error(`Hash mismatch for ${satName} — file may be corrupted or wrong.\nExpected: ${expectedHash}\nGot:      ${actualHash}`);
+    }
+  }
+
   return { bytes, path: filePath };
 });
 
@@ -109,13 +120,42 @@ ipcMain.handle("choose-rec-dir", async () => {
   return filePaths[0];
 });
 
-// ── Save processed IQ recording ────────────────────────────────────────────
-ipcMain.handle("save-recording", (_event, { bytes, filename, meta, dir: customDir }) => {
+// ── Streaming recording — chunks written to disk as they arrive ───────────
+let recStream   = null;  // active write stream
+let recTempPath = null;  // temp file path during recording
+
+ipcMain.handle("rec-start", (_event, { dir: customDir }) => {
   const dir = customDir || path.join(os.homedir(), "recordings");
   fs.mkdirSync(dir, { recursive: true });
+  recTempPath = path.join(dir, `.rec-${Date.now()}.tmp`);
+  recStream = fs.createWriteStream(recTempPath);
+  console.log(`[rec] Started streaming to ${recTempPath}`);
+  return true;
+});
+
+ipcMain.handle("rec-chunk", (_event, { bytes }) => {
+  if (!recStream) return;
+  const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
+  recStream.write(buf);
+});
+
+ipcMain.handle("rec-stop", (_event, { filename, meta, dir: customDir }) => {
+  if (!recStream) return null;
+  recStream.end();
+  recStream = null;
+
+  const dir = customDir || path.join(os.homedir(), "recordings");
   const outPath = path.join(dir, filename);
-  const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(Object.values(bytes));
-  fs.writeFileSync(outPath, buf);
+
+  // Rename temp file to final filename
+  try {
+    fs.renameSync(recTempPath, outPath);
+  } catch {
+    // Cross-device rename fallback
+    fs.copyFileSync(recTempPath, outPath);
+    fs.unlinkSync(recTempPath);
+  }
+  recTempPath = null;
 
   if (meta) {
     const ant = ANT_INFO[meta.antennaType] ?? {};
@@ -153,6 +193,7 @@ ipcMain.handle("save-recording", (_event, { bytes, filename, meta, dir: customDi
                      JSON.stringify(sigmf, null, 2));
   }
 
+  console.log(`[rec] Saved: ${outPath}`);
   return outPath;
 });
 

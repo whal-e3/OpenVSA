@@ -19,8 +19,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getSatPosition:  (satName, lat, lon, timestamp) =>
     ipcRenderer.invoke("get-sat-position", satName, lat, lon, timestamp),
   chooseRecDir:    () => ipcRenderer.invoke("choose-rec-dir"),
-  saveRecording:   (bytes, filename, meta, dir) =>
-    ipcRenderer.invoke("save-recording", { bytes, filename, meta, dir }),
+  recStart:        (dir) => ipcRenderer.invoke("rec-start", { dir }),
+  recChunk:        (bytes) => ipcRenderer.invoke("rec-chunk", { bytes }),
+  recStop:         (filename, meta, dir) => ipcRenderer.invoke("rec-stop", { filename, meta, dir }),
   onQTHUpdated:    (callback) => ipcRenderer.on("qth-updated", (_event, stations) => callback(stations)),
   decodeUplink:    (filePath, satellite, sampleRate) =>
     ipcRenderer.invoke("decode-uplink", { filePath, satellite, sampleRate }),

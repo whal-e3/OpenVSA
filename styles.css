@@ -631,7 +631,7 @@ option.sat-leop {
 .scene-loc-row {
   display: flex;
   align-items: baseline;
-  gap: 4px;
+  gap: 1px;
 }
 
 .scene-loc-refresh-row {
@@ -654,11 +654,11 @@ option.sat-leop {
 .btn-refresh-loc:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .scene-loc-input {
-  width: 120px;
+  width: 95px;
   background: transparent;
   border: none;
   border-bottom: 1px solid #2e3f50;
-  color: #6a8499;
+  color: #c8d8e8;
   font-size: 17px;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.03em;
@@ -675,7 +675,14 @@ option.sat-leop {
 
 .scene-loc-sep {
   font-size: 15px;
+  color: #c8d8e8;
+  margin-left: 2px;
+}
+
+.scene-loc-divider {
+  font-size: 15px;
   color: #4e6880;
+  margin: 0 4px;
 }
 
 /* GPredict overlay (bottom-right of scene) */

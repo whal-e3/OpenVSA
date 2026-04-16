@@ -8,6 +8,7 @@
 const SATELLITES = {
   "DEMOSAT": {
     centerFreqHz: 401.5e6,
+    iqFileHash: "ea236df4786c1eeb917ac28363d956f99cb35ed48ae059f7e861067effc23555",
   },
 };
 

@@ -27,6 +27,7 @@ export const ANTENNA_TYPES = {
     peakGainDb: 6,    // ~16 dBi absolute; +6 dB relative to panel baseline
     noiseTemp:  80,   // Kelvin — moderate ground noise from sidelobes
     txPowerDbm: 37,   // ~5W typical amateur amplifier
+    polarization: "linear",
     buildModel: () => {
       const directors = [6, 24, 42, 60, 78].flatMap((offset, i) =>
         rod({ x: offset, y: 0, z: 0 }, { x: 3, y: 39 - i * 3, z: 3 }),
@@ -46,9 +47,12 @@ export const ANTENNA_TYPES = {
     peakGainDb: 24,   // ~34 dBi absolute; +24 dB relative to panel baseline
     noiseTemp:  30,   // Kelvin — narrow beam sees mostly cold sky
     txPowerDbm: 47,   // ~50W typical ground station amplifier
+    polarization: "linear",
     buildModel: (state = {}) => {
       const tiltPivot = { x: 18, y: 6, z: 0 };
-      const lnbParts = state.downconvEnabled ? [
+      const feedColors = { lband: "#4caf50", sband: "#ffc107", ku: "#d66a2d" };
+      const feed = state.dishFeed || "ku";
+      const lnbParts = (feed === "ku" && state.downconvEnabled) ? [
         // LNB housing body — aluminum blue-gray
         ...boxPart({ x: 50, y: 12, z: 0 }, { x: 16, y: 12, z: 10 }, "#7fa8c8"),
         // Waveguide throat — deep metallic teal
@@ -56,8 +60,8 @@ export const ANTENNA_TYPES = {
         // Cable/connector stub — copper
         ...rod(    { x: 42, y: 12, z: 0 }, { x:  4, y:  4, z:  4 }, "#b87333"),
       ] : [
-        // Original feed point marker
-        ...boxPart({ x: 54, y: 12, z: 0 }, { x: 8, y: 8, z: 8 }, "#d66a2d"),
+        // Feed point marker — color-coded by feed type
+        ...boxPart({ x: 54, y: 12, z: 0 }, { x: 8, y: 8, z: 8 }, feedColors[feed] || "#d66a2d"),
       ];
       const bowlAssembly = transformPartTriangles(
         [
@@ -82,6 +86,7 @@ export const ANTENNA_TYPES = {
     peakGainDb: -8,   // ~2 dBi absolute; -8 dB relative to panel baseline
     noiseTemp:  200,  // Kelvin — omnidirectional, picks up ground noise from all directions
     txPowerDbm: 30,   // ~1W handheld level — too weak for most satellite uplink
+    polarization: "linear",
     buildModel: () => [
       // Support mast
       ...rod({ x: 18, y: 0, z: 0 }, { x: 36, y: 5, z: 5 }, "#5d7181"),
@@ -95,12 +100,13 @@ export const ANTENNA_TYPES = {
   },
 
   helix: {
-    label: "Helix Antenna",
+    label: "Helix Antenna (RHCP)",
     description: "",
     beamwidthDeg: 40,
     peakGainDb: 5,    // ~15 dBi absolute; +5 dB relative to panel baseline
     noiseTemp:  60,   // Kelvin — directional, moderate ground noise
     txPowerDbm: 40,   // ~10W typical cubesat ground station
+    polarization: "RHCP",
     buildModel: () => {
       // Ground plane
       const ground = boxPart({ x: 4, y: 0, z: 0 }, { x: 8, y: 56, z: 56 }, "#4d6070");

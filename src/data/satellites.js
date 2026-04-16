@@ -12,6 +12,7 @@ export const SATELLITES = {
     centerFreqMHz: 401.5,         // UHF data collection band
     eirp:          116,            // LEO UHF beacon (VSA units)
     iqSampleRate:  24_000,        // Hz
+    polarization:  "linear",
     uplink: {
       freqMHz:           449.5,   // UHF TT&C uplink
       purpose:           "TT&C",
