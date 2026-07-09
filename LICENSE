@@ -25,18 +25,22 @@ provided that:
 
 2. Commercial License
 
-A separate commercial license is required for any use not covered by
-the GPLv3, including but not limited to:
+Commercial use of this software is strictly prohibited unless explicit, concrete, 
+and written authorization has been granted directly by SunHyuk Hwang. 
+
+A separate commercial license and written permission are required for any use 
+not covered by the GPLv3, including but not limited to:
 
   - Integration into commercial products or services
   - Use in paid training platforms or paid CTF platforms
   - Bundling with proprietary software
+  - Use in demonstrations, booths, or exhibits at any conference, trade show, or public event if a for-profit entity is sponsoring, co-operating, or affiliated with the space (including joint ventures with academic institutions)
   - Any for-profit use where GPLv3 obligations are not met
 
-For commercial licensing inquiries, contact:
+For commercial licensing inquiries and written authorization, contact:
 
   SunHyuk Hwang
-  hwang@sunhyuk.dev
+  ericwhale0@gmail.com
 
 
 3. Third-Party Components
